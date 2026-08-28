@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import type { Member, PaymentTicket } from '../../types';
+import type { Member, PaymentTicket, ProductSale } from '../../types';
 import { db } from '../../services/db';
 import { formatDate } from '../../utils/date';
-import { LayoutDashboard, CreditCard, DollarSign, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, CreditCard, DollarSign, AlertTriangle, ShoppingCart, TrendingUp } from 'lucide-react';
 
 interface DashboardViewProps {
   onGoToPayment: (member: Member) => void;
@@ -12,6 +12,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onGoToPayment }) =
   const [activeSubTab, setActiveSubTab] = useState<'summary' | 'expiring'>('summary');
   const [members, setMembers] = useState<Member[]>([]);
   const [tickets, setTickets] = useState<PaymentTicket[]>([]);
+  const [productSales, setProductSales] = useState<ProductSale[]>([]);
   const [attendancesCount, setAttendancesCount] = useState<number>(0);
 
   useEffect(() => {
@@ -21,10 +22,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onGoToPayment }) =
   const loadData = () => {
     const allMembers = db.getMembers();
     const allTickets = db.getTickets();
+    const allProductSales = db.getProductSales();
     const allAttendances = db.getAttendance();
 
     setMembers(allMembers);
     setTickets(allTickets);
+    setProductSales(allProductSales);
 
     const todayStr = new Date().toISOString().split('T')[0];
     const todayAtt = allAttendances.filter(a => a.timestamp.startsWith(todayStr));
@@ -37,12 +40,28 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onGoToPayment }) =
 
   const todayStr = new Date().toISOString().split('T')[0];
   const todayTickets = tickets.filter(t => t.paymentDate.startsWith(todayStr));
-  const todayRevenue = todayTickets.reduce((sum, t) => sum + t.amount, 0);
+  const todayProductSales = productSales.filter(s => s.timestamp.startsWith(todayStr));
 
-  const cashRevenue = todayTickets.filter(t => t.paymentMethod === 'EFECTIVO').reduce((sum, t) => sum + t.amount, 0);
-  const transferRevenue = todayTickets.filter(t => t.paymentMethod === 'TRANSFERENCIA').reduce((sum, t) => sum + t.amount, 0);
-  const mpRevenue = todayTickets.filter(t => t.paymentMethod === 'MERCADO_PAGO').reduce((sum, t) => sum + t.amount, 0);
-  const posnetRevenue = todayTickets.filter(t => t.paymentMethod === 'POSNET').reduce((sum, t) => sum + t.amount, 0);
+  const todayMembershipRevenue = todayTickets.reduce((sum, t) => sum + t.amount, 0);
+  const todayPosRevenue = todayProductSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalTodayRevenue = todayMembershipRevenue + todayPosRevenue;
+
+  // Breakdown by payment method
+  const cashMembership = todayTickets.filter(t => t.paymentMethod === 'EFECTIVO').reduce((sum, t) => sum + t.amount, 0);
+  const cashPos = todayProductSales.filter(s => s.paymentMethod === 'EFECTIVO').reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalCashToday = cashMembership + cashPos;
+
+  const mpMembership = todayTickets.filter(t => t.paymentMethod === 'MERCADO_PAGO').reduce((sum, t) => sum + t.amount, 0);
+  const mpPos = todayProductSales.filter(s => s.paymentMethod === 'MERCADO_PAGO').reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalMpToday = mpMembership + mpPos;
+
+  const transferMembership = todayTickets.filter(t => t.paymentMethod === 'TRANSFERENCIA').reduce((sum, t) => sum + t.amount, 0);
+  const transferPos = todayProductSales.filter(s => s.paymentMethod === 'TRANSFERENCIA').reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalTransferToday = transferMembership + transferPos;
+
+  const posnetMembership = todayTickets.filter(t => t.paymentMethod === 'POSNET').reduce((sum, t) => sum + t.amount, 0);
+  const posnetPos = todayProductSales.filter(s => s.paymentMethod === 'POSNET').reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalPosnetToday = posnetMembership + posnetPos;
 
   const totalExpiringCount = expiringSoonMembers.length + expiredMembers.length;
 
@@ -52,7 +71,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onGoToPayment }) =
       <div className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-2xl shadow">
         <h2 className="text-lg sm:text-2xl font-extrabold text-white flex items-center gap-2">
           <LayoutDashboard className="w-5 h-5 text-emerald-400" />
-          Panel de Control y Caja Diaria
+          Panel de Control & Caja Diaria
         </h2>
       </div>
 
@@ -102,8 +121,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onGoToPayment }) =
 
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow space-y-1">
               <span className="text-[11px] font-bold text-slate-400 uppercase">Recaudado Hoy</span>
-              <span className="text-xl font-mono font-black text-white block">${todayRevenue.toLocaleString('es-AR')}</span>
-              <span className="text-[10px] text-slate-500">{todayTickets.length} cobros</span>
+              <span className="text-xl font-mono font-black text-emerald-400 block">${totalTodayRevenue.toLocaleString('es-AR')}</span>
+              <span className="text-[10px] text-slate-500">{todayTickets.length + todayProductSales.length} cobros totales</span>
             </div>
 
             <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow space-y-1">
@@ -113,34 +132,59 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onGoToPayment }) =
             </div>
           </div>
 
+          {/* Revenue Breakdown by Source */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow space-y-2">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                Cuotas de Socios Hoy
+              </span>
+              <span className="text-xl font-mono font-black text-white block">
+                ${todayMembershipRevenue.toLocaleString('es-AR')}
+              </span>
+              <span className="text-[10px] text-slate-500">{todayTickets.length} tickets de cuota</span>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow space-y-2">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <ShoppingCart className="w-4 h-4 text-emerald-400" />
+                Ventas de Cantina Hoy
+              </span>
+              <span className="text-xl font-mono font-black text-emerald-400 block">
+                ${todayPosRevenue.toLocaleString('es-AR')}
+              </span>
+              <span className="text-[10px] text-slate-500">{todayProductSales.length} ventas de productos</span>
+            </div>
+          </div>
+
           {/* Cash breakdown */}
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-2xl shadow space-y-3">
             <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-emerald-400" />
-              Desglose de Caja ({formatDate(todayStr)})
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              Desglose de Caja por Medio de Pago ({formatDate(todayStr)})
             </h3>
 
             <div className="space-y-2 text-xs">
               <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
-                <span className="text-slate-400 font-medium">💵 Efectivo</span>
-                <span className="font-mono font-bold text-white">${cashRevenue.toLocaleString('es-AR')}</span>
+                <span className="text-slate-400 font-medium">💵 Efectivo (Total en Caja)</span>
+                <span className="font-mono font-bold text-white">${totalCashToday.toLocaleString('es-AR')}</span>
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
                 <span className="text-slate-400 font-medium">🏦 Transferencia Bancaria</span>
-                <span className="font-mono font-bold text-white">${transferRevenue.toLocaleString('es-AR')}</span>
+                <span className="font-mono font-bold text-white">${totalTransferToday.toLocaleString('es-AR')}</span>
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
                 <span className="text-slate-400 font-medium">💙 Mercado Pago (QR)</span>
-                <span className="font-mono font-bold text-white">${mpRevenue.toLocaleString('es-AR')}</span>
+                <span className="font-mono font-bold text-white">${totalMpToday.toLocaleString('es-AR')}</span>
               </div>
               <div className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
                 <span className="text-slate-400 font-medium">💳 Posnet / Tarjetas</span>
-                <span className="font-mono font-bold text-white">${posnetRevenue.toLocaleString('es-AR')}</span>
+                <span className="font-mono font-bold text-white">${totalPosnetToday.toLocaleString('es-AR')}</span>
               </div>
 
               <div className="pt-2 border-t border-slate-800 flex items-center justify-between px-1">
                 <span className="font-bold text-slate-200 text-xs">TOTAL RECAUDADO HOY:</span>
-                <span className="text-lg font-mono font-black text-emerald-400">${todayRevenue.toLocaleString('es-AR')}</span>
+                <span className="text-lg font-mono font-black text-emerald-400">${totalTodayRevenue.toLocaleString('es-AR')}</span>
               </div>
             </div>
           </div>

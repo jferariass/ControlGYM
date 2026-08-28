@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import type { Member, Plan, PaymentMethod, PaymentTicket } from '../../types';
+import type { Member, Plan, PaymentMethod, PaymentTicket, User } from '../../types';
 import { db } from '../../services/db';
 import { generateTicketPDF } from '../../utils/ticket';
 import { formatDate } from '../../utils/date';
-import { CreditCard, Printer, Search, CheckCircle2, DollarSign, FileText } from 'lucide-react';
+import { CreditCard, Printer, Search, CheckCircle2, DollarSign, FileText, Trash2 } from 'lucide-react';
 
 interface PaymentsViewProps {
   initialSelectedMember?: Member | null;
+  currentUser: User;
 }
 
-export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMember }) => {
+export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMember, currentUser }) => {
   const [activeSubTab, setActiveSubTab] = useState<'pay' | 'tickets'>('pay');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [tickets, setTickets] = useState<PaymentTicket[]>([]);
@@ -21,7 +22,6 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
   const [amount, setAmount] = useState<number>(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('EFECTIVO');
   const [newExpirationDate, setNewExpirationDate] = useState<string>('');
-  const [recepcionistName] = useState<string>('Recepción');
 
   const [lastIssuedTicket, setLastIssuedTicket] = useState<PaymentTicket | null>(null);
 
@@ -101,7 +101,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
       paymentMethod,
       previousExpiration: selectedMember.expirationDate,
       newExpiration: newExpirationDate,
-      issuedBy: recepcionistName || 'Recepción',
+      issuedBy: currentUser.name,
+      issuedById: currentUser.id,
     });
 
     setLastIssuedTicket(ticket);
@@ -109,6 +110,17 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
 
     const updatedMember = db.getMemberByDni(selectedMember.dni);
     if (updatedMember) setSelectedMember(updatedMember);
+  };
+
+  const handleDeleteTicket = (ticketId: string) => {
+    if (currentUser.role !== 'ADMIN') {
+      alert('⚠️ Restringido: Los empleados no pueden anular ni eliminar tickets sin autorización del dueño.');
+      return;
+    }
+    if (confirm('¿Estás seguro de anular este ticket de cobro?')) {
+      db.deleteTicket(ticketId);
+      loadData();
+    }
   };
 
   return (
@@ -199,9 +211,12 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
 
           {/* Form */}
           <form onSubmit={handleCreateTicket} className="space-y-3.5 pt-2 border-t border-slate-800">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-emerald-400" />
-              2. Detalle de Cobro y Vencimiento
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-emerald-400" />
+                2. Detalle de Cobro y Vencimiento
+              </span>
+              <span className="text-[11px] text-emerald-400 font-semibold">Atendido por: {currentUser.name}</span>
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -290,32 +305,49 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
               {tickets.map(ticket => (
                 <div
                   key={ticket.id}
-                  className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-xs space-y-1.5 shadow"
+                  className="bg-slate-950 border border-slate-800 p-3.5 rounded-xl text-xs space-y-1.5 shadow flex flex-col justify-between"
                 >
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
-                    <span className="font-mono font-bold text-emerald-400">{ticket.ticketNumber}</span>
-                    <span className="text-slate-500">{formatDate(ticket.paymentDate)}</span>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <span className="font-mono font-bold text-emerald-400">{ticket.ticketNumber}</span>
+                      <span className="text-slate-500">{formatDate(ticket.paymentDate)}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-white text-xs">{ticket.memberName}</span>
+                      <span className="font-mono font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        ${ticket.amount.toLocaleString('es-AR')}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-slate-400 text-[10px]">
+                      <span>{ticket.planName} ({ticket.paymentMethod})</span>
+                      <span className="text-amber-400 font-mono">Vence: {formatDate(ticket.newExpiration)}</span>
+                    </div>
+
+                    <div className="text-[10px] text-slate-500">
+                      Atendido por: <strong className="text-slate-300">{ticket.issuedBy}</strong>
+                    </div>
                   </div>
 
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-white text-xs">{ticket.memberName}</span>
-                    <span className="font-mono font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
-                      ${ticket.amount.toLocaleString('es-AR')}
-                    </span>
+                  <div className="flex items-center gap-1.5 pt-2 border-t border-slate-900">
+                    <button
+                      onClick={() => generateTicketPDF(ticket)}
+                      className="flex-1 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                      Imprimir PDF
+                    </button>
+                    {currentUser.role === 'ADMIN' && (
+                      <button
+                        onClick={() => handleDeleteTicket(ticket.id)}
+                        className="bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 p-1.5 rounded-lg text-xs transition"
+                        title="Anular Ticket (Solo Dueños)"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </div>
-
-                  <div className="flex items-center justify-between text-slate-400 text-[10px]">
-                    <span>{ticket.planName} ({ticket.paymentMethod})</span>
-                    <span className="text-amber-400 font-mono">Vence: {formatDate(ticket.newExpiration)}</span>
-                  </div>
-
-                  <button
-                    onClick={() => generateTicketPDF(ticket)}
-                    className="w-full mt-1 bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 py-1.5 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1"
-                  >
-                    <Printer className="w-3.5 h-3.5 text-emerald-400" />
-                    Imprimir PDF
-                  </button>
                 </div>
               ))}
             </div>
@@ -340,6 +372,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
             <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-left text-xs font-mono space-y-1 text-slate-300">
               <p><span className="text-slate-500">Socio:</span> {lastIssuedTicket.memberName}</p>
               <p><span className="text-slate-500">Monto:</span> ${lastIssuedTicket.amount.toLocaleString('es-AR')}</p>
+              <p><span className="text-slate-500">Atendido por:</span> {lastIssuedTicket.issuedBy}</p>
               <p><span className="text-slate-500">Vencimiento:</span> <strong className="text-amber-400">{formatDate(lastIssuedTicket.newExpiration)}</strong></p>
             </div>
 
