@@ -1,9 +1,9 @@
 import React from 'react';
 import type { User } from '../../types';
-import { QrCode, Users, CreditCard, LayoutDashboard, Settings, ShoppingCart, UserCheck, LogOut, Dumbbell } from 'lucide-react';
+import { QrCode, Users, CreditCard, LayoutDashboard, Settings, ShoppingCart, UserCheck, LogOut, Dumbbell, History } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export type ActiveTab = 'reception' | 'members' | 'payments' | 'pos' | 'dashboard' | 'users' | 'settings';
+export type ActiveTab = 'reception' | 'members' | 'payments' | 'pos' | 'dashboard' | 'users' | 'audit' | 'settings';
 
 interface NavbarProps {
   activeTab: ActiveTab;
@@ -43,6 +43,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       badge: pendingExpiringCount > 0 ? pendingExpiringCount : undefined 
     },
     { id: 'users', label: 'Personal', shortLabel: 'Personal', icon: UserCheck, adminOnly: true },
+    { id: 'audit', label: 'Auditoría', shortLabel: 'Auditoría', icon: History, adminOnly: true },
     { id: 'settings', label: 'Ajustes', shortLabel: 'Ajustes', icon: Settings, adminOnly: true },
   ];
 
@@ -90,7 +91,7 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Navigation Items */}
-        <nav className="flex-1 space-y-1.5">
+        <nav className="flex-1 space-y-1.5 overflow-y-auto pr-1">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeTab === item.id;
@@ -122,8 +123,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Footer info */}
         <div className="pt-4 border-t border-slate-800/80 text-[11px] text-slate-500">
-          <p className="font-semibold text-slate-400">ControlGYM PWA v2.0</p>
-          <p className="mt-0.5">Sistema de Cantina & Multi-Rol</p>
+          <p className="font-semibold text-slate-400">ControlGYM PWA v2.2</p>
+          <p className="mt-0.5">Control & Auditoría de Actividad</p>
         </div>
       </aside>
 
@@ -156,7 +157,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Bottom Navigation Bar */}
         <nav className="fixed bottom-0 left-0 right-0 z-40 bg-slate-900/95 backdrop-blur-xl border-t border-slate-800/80 px-1 py-1.5 shadow-2xl">
-          <div className="flex items-center justify-around max-w-md mx-auto">
+          <div className="flex items-center justify-around max-w-lg mx-auto">
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
@@ -180,7 +181,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </span>
                     )}
                   </div>
-                  <span className="text-[9px] tracking-tight mt-0.5 font-medium">{item.shortLabel}</span>
+                  <span className="text-[8px] tracking-tight mt-0.5 font-medium truncate max-w-[50px]">{item.shortLabel}</span>
                 </button>
               );
             })}

@@ -133,7 +133,7 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
       memberId: member ? member.id : undefined,
       memberName: member ? `${member.firstName} ${member.lastName}` : undefined,
       isAccountCharge,
-    });
+    }, currentUser);
 
     loadData();
     setCart([]);
@@ -215,7 +215,7 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
       stock: Number(productForm.stock),
       minStock: Number(productForm.minStock),
       imageUrl: productForm.imageUrl,
-    });
+    }, currentUser);
 
     loadData();
     setIsProductModalOpen(false);
@@ -232,7 +232,7 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
       return;
     }
     if (confirm(`¿Eliminar producto "${name}"?`)) {
-      db.deleteProduct(id);
+      db.deleteProduct(id, currentUser);
       loadData();
     }
   };
@@ -241,7 +241,7 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
     e.preventDefault();
     if (!restockProduct || restockQty <= 0) return;
 
-    db.updateProductStock(restockProduct.id, Number(restockQty));
+    db.updateProductStock(restockProduct.id, Number(restockQty), currentUser);
     loadData();
     setRestockProduct(null);
     setNotification({

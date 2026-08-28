@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
-import type { Member, AttendanceRecord } from '../../types';
+import type { Member, AttendanceRecord, User } from '../../types';
 import { db } from '../../services/db';
 import { formatDate } from '../../utils/date';
-import { Search, CheckCircle2, AlertTriangle, XCircle, User, CreditCard, Clock, Sparkles, UserPlus } from 'lucide-react';
+import { Search, CheckCircle2, AlertTriangle, XCircle, User as UserIcon, CreditCard, Clock, Sparkles, UserPlus } from 'lucide-react';
 
 interface ReceptionViewProps {
   onGoToPayment: (member: Member) => void;
   onGoToNewMember: () => void;
+  currentUser: User;
 }
 
-export const ReceptionView: React.FC<ReceptionViewProps> = ({ onGoToPayment, onGoToNewMember }) => {
+export const ReceptionView: React.FC<ReceptionViewProps> = ({ onGoToPayment, onGoToNewMember, currentUser }) => {
   const [activeSubTab, setActiveSubTab] = useState<'checkin' | 'history'>('checkin');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -66,7 +67,7 @@ export const ReceptionView: React.FC<ReceptionViewProps> = ({ onGoToPayment, onG
       return;
     }
 
-    db.recordAttendance(selectedMember);
+    db.recordAttendance(selectedMember, currentUser);
     loadAttendances();
 
     setNotification({
@@ -251,7 +252,7 @@ export const ReceptionView: React.FC<ReceptionViewProps> = ({ onGoToPayment, onG
             </div>
           ) : (
             <div className="bg-slate-900 border border-slate-800 border-dashed p-8 rounded-2xl text-center text-slate-400">
-              <User className="w-10 h-10 mx-auto mb-2 text-slate-600" />
+              <UserIcon className="w-10 h-10 mx-auto mb-2 text-slate-600" />
               <p className="font-bold text-white text-sm">Esperando consulta de socio</p>
               <p className="text-xs text-slate-500 mt-1">Ingresá el DNI arriba para validar el pase.</p>
             </div>

@@ -103,7 +103,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
       newExpiration: newExpirationDate,
       issuedBy: currentUser.name,
       issuedById: currentUser.id,
-    });
+    }, currentUser);
 
     setLastIssuedTicket(ticket);
     loadData();
@@ -118,7 +118,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ initialSelectedMembe
       return;
     }
     if (confirm('¿Estás seguro de anular este ticket de cobro?')) {
-      db.deleteTicket(ticketId);
+      db.deleteTicket(ticketId, currentUser);
       loadData();
     }
   };

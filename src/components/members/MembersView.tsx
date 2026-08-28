@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Member, MemberStatus, Plan } from '../../types';
+import type { Member, MemberStatus, Plan, User } from '../../types';
 import { db } from '../../services/db';
 import { formatDate } from '../../utils/date';
 import { Users, Search, UserPlus, CreditCard, Edit, Trash2, X } from 'lucide-react';
@@ -7,9 +7,10 @@ import { Users, Search, UserPlus, CreditCard, Edit, Trash2, X } from 'lucide-rea
 interface MembersViewProps {
   onGoToPayment: (member: Member) => void;
   openNewModalDirectly?: boolean;
+  currentUser?: User;
 }
 
-export const MembersView: React.FC<MembersViewProps> = ({ onGoToPayment, openNewModalDirectly = false }) => {
+export const MembersView: React.FC<MembersViewProps> = ({ onGoToPayment, openNewModalDirectly = false, currentUser }) => {
   const [members, setMembers] = useState<Member[]>([]);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -95,7 +96,7 @@ export const MembersView: React.FC<MembersViewProps> = ({ onGoToPayment, openNew
       planId: formData.planId,
       planName: selectedPlan ? selectedPlan.name : 'Musculación Mensual',
       expirationDate: formData.expirationDate,
-    });
+    }, currentUser);
 
     loadData();
     setIsModalOpen(false);
@@ -103,7 +104,7 @@ export const MembersView: React.FC<MembersViewProps> = ({ onGoToPayment, openNew
 
   const handleDelete = (id: string, name: string) => {
     if (confirm(`¿Eliminar a ${name}?`)) {
-      db.deleteMember(id);
+      db.deleteMember(id, currentUser);
       loadData();
     }
   };

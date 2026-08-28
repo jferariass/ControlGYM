@@ -26,7 +26,7 @@ export interface Member {
   registrationDate: string;
   emergencyContact?: string;
   medicalNotes?: string;
-  accountBalance?: number; // Deuda/Saldo a favor de cantina
+  accountBalance?: number;
 }
 
 export interface Plan {
@@ -108,4 +108,26 @@ export interface ProductSale {
   memberName?: string;
   isAccountCharge?: boolean;
   timestamp: string; // ISO String
+}
+
+export type AuditActionType =
+  | 'LOGIN'
+  | 'ATTENDANCE_CHECKIN'
+  | 'MEMBERSHIP_PAYMENT'
+  | 'POS_SALE'
+  | 'STOCK_UPDATE'
+  | 'MEMBER_CREATE_EDIT'
+  | 'MEMBER_DELETE'
+  | 'USER_CREATE_EDIT'
+  | 'PLAN_UPDATE'
+  | 'TICKET_DELETE';
+
+export interface AuditLog {
+  id: string;
+  timestamp: string; // ISO String
+  userId: string;
+  userName: string;
+  userRole: UserRole;
+  actionType: AuditActionType;
+  details: string;
 }

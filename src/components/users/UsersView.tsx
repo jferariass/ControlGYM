@@ -58,7 +58,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
       name: formData.name.trim(),
       role: editingUser ? editingUser.role : 'STAFF', // Strictly STAFF for new employees created by owners
       pin: formData.pin.trim(),
-    });
+    }, currentUser);
 
     loadUsers();
     setIsModalOpen(false);
@@ -72,7 +72,7 @@ export const UsersView: React.FC<UsersViewProps> = ({ currentUser }) => {
       return;
     }
     if (confirm(`¿Eliminar al empleado "${name}"?`)) {
-      db.deleteUser(id);
+      db.deleteUser(id, currentUser);
       loadUsers();
     }
   };

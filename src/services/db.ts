@@ -1,4 +1,4 @@
-import type { Member, Plan, AttendanceRecord, PaymentTicket, MemberStatus, User, Product, ProductSale } from '../types';
+import type { Member, Plan, AttendanceRecord, PaymentTicket, MemberStatus, User, Product, ProductSale, AuditLog, AuditActionType } from '../types';
 
 export interface GymSettings {
   name: string;
@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   SETTINGS: 'controlgym_settings_v2',
   PRODUCTS: 'controlgym_products_v2',
   PRODUCT_SALES: 'controlgym_product_sales_v2',
+  AUDIT_LOGS: 'controlgym_audit_logs_v2',
 };
 
 const DEFAULT_USERS: User[] = [
@@ -115,6 +116,28 @@ class DatabaseService {
     }
   }
 
+  // --- AUDIT LOGS ---
+  getAuditLogs(): AuditLog[] {
+    return this.get<AuditLog[]>(STORAGE_KEYS.AUDIT_LOGS, []);
+  }
+
+  logAuditAction(user: User, actionType: AuditActionType, details: string): AuditLog {
+    const logs = this.getAuditLogs();
+    const newLog: AuditLog = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+      timestamp: new Date().toISOString(),
+      userId: user.id,
+      userName: user.name,
+      userRole: user.role,
+      actionType,
+      details,
+    };
+    logs.unshift(newLog);
+    // Keep last 500 logs to preserve space
+    this.set(STORAGE_KEYS.AUDIT_LOGS, logs.slice(0, 500));
+    return newLog;
+  }
+
   // --- USERS ---
   getUsers(): User[] {
     return this.get<User[]>(STORAGE_KEYS.USERS, DEFAULT_USERS);
@@ -122,16 +145,23 @@ class DatabaseService {
 
   authenticatePin(pin: string): User | null {
     const users = this.getUsers();
-    return users.find(u => u.pin === pin && u.active) || null;
+    const found = users.find(u => u.pin === pin && u.active) || null;
+    if (found) {
+      this.logAuditAction(found, 'LOGIN', `Inicio de turno en el sistema`);
+    }
+    return found;
   }
 
-  saveUser(user: Partial<User> & { name: string; role: User['role']; pin: string }): User {
+  saveUser(user: Partial<User> & { name: string; role: User['role']; pin: string }, actorUser?: User): User {
     const users = this.getUsers();
     if (user.id) {
       const index = users.findIndex(u => u.id === user.id);
       if (index !== -1) {
         users[index] = { ...users[index], ...user };
         this.set(STORAGE_KEYS.USERS, users);
+        if (actorUser) {
+          this.logAuditAction(actorUser, 'USER_CREATE_EDIT', `Editó los datos/PIN del usuario "${user.name}"`);
+        }
         return users[index];
       }
     }
@@ -144,12 +174,19 @@ class DatabaseService {
     };
     users.push(newUser);
     this.set(STORAGE_KEYS.USERS, users);
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'USER_CREATE_EDIT', `Creó el usuario empleado "${user.name}" (PIN: ${user.pin})`);
+    }
     return newUser;
   }
 
-  deleteUser(id: string): void {
+  deleteUser(id: string, actorUser?: User): void {
+    const target = this.getUsers().find(u => u.id === id);
     const users = this.getUsers().filter(u => u.id !== id);
     this.set(STORAGE_KEYS.USERS, users);
+    if (actorUser && target) {
+      this.logAuditAction(actorUser, 'USER_CREATE_EDIT', `Eliminó el perfil del empleado "${target.name}"`);
+    }
   }
 
   // --- SETTINGS ---
@@ -157,8 +194,11 @@ class DatabaseService {
     return this.get<GymSettings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
   }
 
-  saveSettings(settings: GymSettings): void {
+  saveSettings(settings: GymSettings, actorUser?: User): void {
     this.set(STORAGE_KEYS.SETTINGS, settings);
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'PLAN_UPDATE', `Actualizó los datos comerciales del gimnasio (${settings.name})`);
+    }
   }
 
   // --- MEMBERS ---
@@ -175,7 +215,7 @@ class DatabaseService {
     return members.find(m => m.dni.trim() === dni.trim()) || null;
   }
 
-  saveMember(member: Partial<Member> & { dni: string; firstName: string; lastName: string }): Member {
+  saveMember(member: Partial<Member> & { dni: string; firstName: string; lastName: string }, actorUser?: User): Member {
     const members = this.getMembers();
 
     if (member.id) {
@@ -188,6 +228,9 @@ class DatabaseService {
         };
         members[index] = updated;
         this.set(STORAGE_KEYS.MEMBERS, members);
+        if (actorUser) {
+          this.logAuditAction(actorUser, 'MEMBER_CREATE_EDIT', `Actualizó el expediente del socio ${member.firstName} ${member.lastName} (DNI: ${member.dni})`);
+        }
         return updated;
       }
     }
@@ -211,12 +254,21 @@ class DatabaseService {
 
     members.push(newMember);
     this.set(STORAGE_KEYS.MEMBERS, members);
+
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'MEMBER_CREATE_EDIT', `Registró al nuevo socio ${member.firstName} ${member.lastName} (DNI: ${member.dni})`);
+    }
+
     return newMember;
   }
 
-  deleteMember(id: string): void {
+  deleteMember(id: string, actorUser?: User): void {
+    const target = this.getMembers().find(m => m.id === id);
     const members = this.getMembers().filter(m => m.id !== id);
     this.set(STORAGE_KEYS.MEMBERS, members);
+    if (actorUser && target) {
+      this.logAuditAction(actorUser, 'MEMBER_DELETE', `Eliminó la ficha del socio ${target.firstName} ${target.lastName} (DNI: ${target.dni})`);
+    }
   }
 
   updateMemberBalance(memberId: string, deltaAmount: number): void {
@@ -247,13 +299,16 @@ class DatabaseService {
     return this.get<Plan[]>(STORAGE_KEYS.PLANS, DEFAULT_PLANS);
   }
 
-  savePlan(plan: Partial<Plan> & { name: string; price: number }): Plan {
+  savePlan(plan: Partial<Plan> & { name: string; price: number }, actorUser?: User): Plan {
     const plans = this.getPlans();
     if (plan.id) {
       const index = plans.findIndex(p => p.id === plan.id);
       if (index !== -1) {
         plans[index] = { ...plans[index], ...plan };
         this.set(STORAGE_KEYS.PLANS, plans);
+        if (actorUser) {
+          this.logAuditAction(actorUser, 'PLAN_UPDATE', `Modificó el plan "${plan.name}" (Precio: $${plan.price})`);
+        }
         return plans[index];
       }
     }
@@ -266,12 +321,19 @@ class DatabaseService {
     };
     plans.push(newPlan);
     this.set(STORAGE_KEYS.PLANS, plans);
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'PLAN_UPDATE', `Creó el plan de cuota "${plan.name}" (Precio: $${plan.price})`);
+    }
     return newPlan;
   }
 
-  deletePlan(id: string): void {
+  deletePlan(id: string, actorUser?: User): void {
+    const target = this.getPlans().find(p => p.id === id);
     const plans = this.getPlans().filter(p => p.id !== id);
     this.set(STORAGE_KEYS.PLANS, plans);
+    if (actorUser && target) {
+      this.logAuditAction(actorUser, 'PLAN_UPDATE', `Eliminó el plan "${target.name}"`);
+    }
   }
 
   // --- ATTENDANCE ---
@@ -279,7 +341,7 @@ class DatabaseService {
     return this.get<AttendanceRecord[]>(STORAGE_KEYS.ATTENDANCE, []);
   }
 
-  recordAttendance(member: Member): AttendanceRecord {
+  recordAttendance(member: Member, actorUser?: User): AttendanceRecord {
     const records = this.getAttendance();
     const newRecord: AttendanceRecord = {
       id: Date.now().toString(),
@@ -290,6 +352,11 @@ class DatabaseService {
     };
     records.unshift(newRecord);
     this.set(STORAGE_KEYS.ATTENDANCE, records);
+
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'ATTENDANCE_CHECKIN', `Registró ingreso por DNI para ${member.firstName} ${member.lastName} (DNI: ${member.dni})`);
+    }
+
     return newRecord;
   }
 
@@ -298,7 +365,7 @@ class DatabaseService {
     return this.get<PaymentTicket[]>(STORAGE_KEYS.TICKETS, []);
   }
 
-  createPaymentTicket(ticketData: Omit<PaymentTicket, 'id' | 'ticketNumber' | 'paymentDate'>): PaymentTicket {
+  createPaymentTicket(ticketData: Omit<PaymentTicket, 'id' | 'ticketNumber' | 'paymentDate'>, actorUser?: User): PaymentTicket {
     const tickets = this.getTickets();
 
     const countToday = tickets.filter(t => t.paymentDate.startsWith(new Date().toISOString().split('T')[0])).length;
@@ -323,12 +390,20 @@ class DatabaseService {
       this.set(STORAGE_KEYS.MEMBERS, members);
     }
 
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'MEMBERSHIP_PAYMENT', `Cobró cuota de $${ticketData.amount} a ${ticketData.memberName} (${ticketData.planName} - ${ticketData.paymentMethod}). Ticket N° ${ticketNumber}`);
+    }
+
     return newTicket;
   }
 
-  deleteTicket(id: string): void {
+  deleteTicket(id: string, actorUser?: User): void {
+    const target = this.getTickets().find(t => t.id === id);
     const tickets = this.getTickets().filter(t => t.id !== id);
     this.set(STORAGE_KEYS.TICKETS, tickets);
+    if (actorUser && target) {
+      this.logAuditAction(actorUser, 'TICKET_DELETE', `Anuló/Eliminó el ticket de cuota N° ${target.ticketNumber} ($${target.amount} - ${target.memberName})`);
+    }
   }
 
   // --- PRODUCTS & POS ---
@@ -336,13 +411,16 @@ class DatabaseService {
     return this.get<Product[]>(STORAGE_KEYS.PRODUCTS, DEFAULT_PRODUCTS);
   }
 
-  saveProduct(product: Partial<Product> & { name: string; price: number; stock: number }): Product {
+  saveProduct(product: Partial<Product> & { name: string; price: number; stock: number }, actorUser?: User): Product {
     const products = this.getProducts();
     if (product.id) {
       const index = products.findIndex(p => p.id === product.id);
       if (index !== -1) {
         products[index] = { ...products[index], ...product };
         this.set(STORAGE_KEYS.PRODUCTS, products);
+        if (actorUser) {
+          this.logAuditAction(actorUser, 'STOCK_UPDATE', `Editó el producto "${product.name}" (Stock: ${product.stock}, Precio: $${product.price})`);
+        }
         return products[index];
       }
     }
@@ -361,20 +439,30 @@ class DatabaseService {
     };
     products.push(newProduct);
     this.set(STORAGE_KEYS.PRODUCTS, products);
+    if (actorUser) {
+      this.logAuditAction(actorUser, 'STOCK_UPDATE', `Agregó un nuevo producto a cantina "${product.name}" (Stock: ${product.stock})`);
+    }
     return newProduct;
   }
 
-  deleteProduct(id: string): void {
+  deleteProduct(id: string, actorUser?: User): void {
+    const target = this.getProducts().find(p => p.id === id);
     const products = this.getProducts().filter(p => p.id !== id);
     this.set(STORAGE_KEYS.PRODUCTS, products);
+    if (actorUser && target) {
+      this.logAuditAction(actorUser, 'STOCK_UPDATE', `Eliminó el producto "${target.name}" de la cantina`);
+    }
   }
 
-  updateProductStock(productId: string, addQuantity: number): void {
+  updateProductStock(productId: string, addQuantity: number, actorUser?: User): void {
     const products = this.getProducts();
     const prod = products.find(p => p.id === productId);
     if (prod) {
       prod.stock = Math.max(0, prod.stock + addQuantity);
       this.set(STORAGE_KEYS.PRODUCTS, products);
+      if (actorUser) {
+        this.logAuditAction(actorUser, 'STOCK_UPDATE', `Reabasteció stock de "${prod.name}" (+${addQuantity} unidades). Nuevo stock: ${prod.stock}`);
+      }
     }
   }
 
@@ -382,7 +470,7 @@ class DatabaseService {
     return this.get<ProductSale[]>(STORAGE_KEYS.PRODUCT_SALES, []);
   }
 
-  createProductSale(saleData: Omit<ProductSale, 'id' | 'saleNumber' | 'timestamp'>): ProductSale {
+  createProductSale(saleData: Omit<ProductSale, 'id' | 'saleNumber' | 'timestamp'>, actorUser?: User): ProductSale {
     const sales = this.getProductSales();
     const countToday = sales.filter(s => s.timestamp.startsWith(new Date().toISOString().split('T')[0])).length;
     const saleNumber = `POS-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${(countToday + 1).toString().padStart(3, '0')}`;
@@ -397,7 +485,7 @@ class DatabaseService {
     sales.unshift(newSale);
     this.set(STORAGE_KEYS.PRODUCT_SALES, sales);
 
-    // Descontar Stock si no es devolución
+    // Descontar Stock
     saleData.items.forEach(item => {
       this.updateProductStock(item.productId, -item.quantity);
     });
@@ -407,12 +495,21 @@ class DatabaseService {
       this.updateMemberBalance(saleData.memberId, saleData.totalAmount);
     }
 
+    if (actorUser) {
+      const summaryItems = saleData.items.map(i => `${i.productName} (x${i.quantity})`).join(', ');
+      this.logAuditAction(actorUser, 'POS_SALE', `Registró venta de cantina N° ${saleNumber} ($${saleData.totalAmount} - ${saleData.paymentMethod}): ${summaryItems}`);
+    }
+
     return newSale;
   }
 
-  deleteProductSale(id: string): void {
+  deleteProductSale(id: string, actorUser?: User): void {
+    const target = this.getProductSales().find(s => s.id === id);
     const sales = this.getProductSales().filter(s => s.id !== id);
     this.set(STORAGE_KEYS.PRODUCT_SALES, sales);
+    if (actorUser && target) {
+      this.logAuditAction(actorUser, 'TICKET_DELETE', `Anuló/Eliminó la venta de cantina N° ${target.saleNumber} ($${target.totalAmount})`);
+    }
   }
 
   // --- BACKUP & RESTORE ---
@@ -426,6 +523,7 @@ class DatabaseService {
       settings: this.getSettings(),
       products: this.getProducts(),
       productSales: this.getProductSales(),
+      auditLogs: this.getAuditLogs(),
       exportedAt: new Date().toISOString(),
     };
     return JSON.stringify(backupData, null, 2);
@@ -442,6 +540,7 @@ class DatabaseService {
       if (data.settings) this.set(STORAGE_KEYS.SETTINGS, data.settings);
       if (data.products) this.set(STORAGE_KEYS.PRODUCTS, data.products);
       if (data.productSales) this.set(STORAGE_KEYS.PRODUCT_SALES, data.productSales);
+      if (data.auditLogs) this.set(STORAGE_KEYS.AUDIT_LOGS, data.auditLogs);
       return true;
     } catch (e) {
       console.error('Error importing backup', e);

@@ -8,6 +8,7 @@ import { DashboardView } from './components/dashboard/DashboardView';
 import { SettingsView } from './components/settings/SettingsView';
 import { PosView } from './components/pos/PosView';
 import { UsersView } from './components/users/UsersView';
+import { AuditLogView } from './components/audit/AuditLogView';
 import { LoginView } from './components/auth/LoginView';
 import type { Member, User } from './types';
 import { db } from './services/db';
@@ -82,6 +83,7 @@ export function App() {
           <ReceptionView
             onGoToPayment={handleGoToPayment}
             onGoToNewMember={handleGoToNewMember}
+            currentUser={currentUser}
           />
         )}
 
@@ -89,6 +91,7 @@ export function App() {
           <MembersView
             onGoToPayment={handleGoToPayment}
             openNewModalDirectly={openNewMemberModal}
+            currentUser={currentUser}
           />
         )}
 
@@ -113,6 +116,12 @@ export function App() {
 
         {activeTab === 'users' && currentUser.role === 'ADMIN' && (
           <UsersView
+            currentUser={currentUser}
+          />
+        )}
+
+        {activeTab === 'audit' && currentUser.role === 'ADMIN' && (
+          <AuditLogView
             currentUser={currentUser}
           />
         )}
