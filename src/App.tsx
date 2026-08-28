@@ -12,17 +12,9 @@ import { LoginView } from './components/auth/LoginView';
 import type { Member, User } from './types';
 import { db } from './services/db';
 
-const SESSION_KEY = 'controlgym_session_user_v2';
-
 export function App() {
-  const [currentUser, setCurrentUser] = useState<User | null>(() => {
-    try {
-      const stored = localStorage.getItem(SESSION_KEY);
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  // Always require PIN authentication on app open/refresh (starts as null)
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('reception');
   const [paymentSelectedMember, setPaymentSelectedMember] = useState<Member | null>(null);
@@ -30,7 +22,9 @@ export function App() {
   const [pendingCount, setPendingCount] = useState<number>(0);
 
   useEffect(() => {
-    updatePendingCount();
+    if (currentUser) {
+      updatePendingCount();
+    }
   }, [activeTab, currentUser]);
 
   const updatePendingCount = () => {
@@ -41,13 +35,11 @@ export function App() {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user);
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
     setActiveTab('reception');
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem(SESSION_KEY);
   };
 
   const handleGoToPayment = (member: Member) => {
@@ -60,11 +52,16 @@ export function App() {
     setActiveTab('members');
   };
 
-  // If not logged in, show Login Screen
+  // 1. MANDATORY PIN ACCESS SCREEN: Clean, empty page with ONLY the PIN Login Modal
   if (!currentUser) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    return (
+      <div className="min-h-screen bg-slate-950 w-full flex items-center justify-center">
+        <LoginView onLoginSuccess={handleLoginSuccess} />
+      </div>
+    );
   }
 
+  // 2. AUTHENTICATED SYSTEM: Render app based on user role (Employee vs Owner)
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-slate-950 text-slate-100 font-sans antialiased selection:bg-emerald-500 selection:text-slate-950">
       {/* Navigation (Sidebar for PC / Top & Bottom Navigation Bar for Mobile) */}
