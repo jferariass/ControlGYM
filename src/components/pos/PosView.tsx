@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Product, ProductCategory, PaymentMethod, Member, User } from '../../types';
 import { db } from '../../services/db';
-import { ShoppingCart, Package, Plus, Trash2, Edit, CheckCircle2, Search, RefreshCw, X } from 'lucide-react';
+import { ShoppingCart, Package, Plus, Trash2, Edit, CheckCircle2, Search, RefreshCw, X, Image as ImageIcon, Barcode, Upload } from 'lucide-react';
 
 interface PosViewProps {
   currentUser: User;
@@ -33,11 +33,14 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [productForm, setProductForm] = useState({
     name: '',
+    barCode: '',
+    description: '',
     category: 'BEBIDAS' as ProductCategory,
     price: 1500,
     costPrice: 800,
     stock: 20,
     minStock: 5,
+    imageUrl: '',
   });
 
   // Re-stock Modal State
@@ -151,11 +154,14 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
     setEditingProduct(null);
     setProductForm({
       name: '',
+      barCode: '',
+      description: '',
       category: 'BEBIDAS',
       price: 1500,
       costPrice: 800,
       stock: 20,
       minStock: 5,
+      imageUrl: '',
     });
     setIsProductModalOpen(true);
   };
@@ -164,13 +170,34 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
     setEditingProduct(prod);
     setProductForm({
       name: prod.name,
+      barCode: prod.barCode || '',
+      description: prod.description || '',
       category: prod.category,
       price: prod.price,
       costPrice: prod.costPrice,
       stock: prod.stock,
       minStock: prod.minStock,
+      imageUrl: prod.imageUrl || '',
     });
     setIsProductModalOpen(true);
+  };
+
+  const handleImageFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      alert('La imagen debe pesar menos de 2MB');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      if (event.target?.result) {
+        setProductForm(prev => ({ ...prev, imageUrl: event.target?.result as string }));
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSaveProduct = (e: React.FormEvent) => {
@@ -180,15 +207,23 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
     db.saveProduct({
       id: editingProduct ? editingProduct.id : undefined,
       name: productForm.name.trim(),
+      barCode: productForm.barCode.trim(),
+      description: productForm.description.trim(),
       category: productForm.category,
       price: Number(productForm.price),
       costPrice: Number(productForm.costPrice),
       stock: Number(productForm.stock),
       minStock: Number(productForm.minStock),
+      imageUrl: productForm.imageUrl,
     });
 
     loadData();
     setIsProductModalOpen(false);
+    setNotification({
+      message: editingProduct ? 'Producto actualizado correctamente.' : 'Nuevo producto agregado.',
+      type: 'success',
+    });
+    setTimeout(() => setNotification(null), 3000);
   };
 
   const handleDeleteProduct = (id: string, name: string) => {
@@ -217,19 +252,33 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
   };
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchProduct.toLowerCase());
+    const query = searchProduct.toLowerCase().trim();
+    const matchesName = p.name.toLowerCase().includes(query);
+    const matchesCode = (p.barCode || '').toLowerCase().includes(query);
+    const matchesSearch = matchesName || matchesCode;
     const matchesCategory = categoryFilter === 'ALL' || p.category === categoryFilter;
     return matchesSearch && matchesCategory;
   });
 
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Header */}
-      <div className="bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-2xl shadow">
-        <h2 className="text-lg sm:text-2xl font-extrabold text-white flex items-center gap-2">
-          <ShoppingCart className="w-5 h-5 text-emerald-400" />
-          Cantina & Control de Stock
-        </h2>
+      {/* Top Header with Prominent "+ Agregar Producto" Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 sm:p-6 rounded-2xl shadow">
+        <div>
+          <h2 className="text-lg sm:text-2xl font-extrabold text-white flex items-center gap-2">
+            <ShoppingCart className="w-5 h-5 text-emerald-400" />
+            Cantina & Control de Stock
+          </h2>
+          <p className="text-xs text-slate-400 mt-0.5">Venta rápida de bebidas, suplementos y ropa.</p>
+        </div>
+
+        <button
+          onClick={handleOpenNewProduct}
+          className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs sm:text-sm transition shadow flex items-center justify-center gap-1.5 shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          + Agregar Producto
+        </button>
       </div>
 
       {notification && (
@@ -281,7 +330,7 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                   type="text"
                   value={searchProduct}
                   onChange={e => setSearchProduct(e.target.value)}
-                  placeholder="Buscar producto (Agua, Energizante, Remera)..."
+                  placeholder="Buscar por Nombre o Código de Barras..."
                   className="w-full bg-slate-950 border border-slate-800 text-white text-xs pl-10 pr-4 py-2.5 rounded-xl outline-none focus:border-emerald-400"
                 />
               </div>
@@ -319,11 +368,29 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                       : 'border-slate-800'
                   }`}
                 >
+                  {/* Product Image Thumbnail */}
+                  <div className="w-full h-24 bg-slate-950 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 relative">
+                    {prod.imageUrl ? (
+                      <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="w-8 h-8 text-slate-700" />
+                    )}
+                    {prod.barCode && (
+                      <span className="absolute bottom-1 right-1 bg-slate-900/90 text-slate-400 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border border-slate-800 flex items-center gap-1">
+                        <Barcode className="w-2.5 h-2.5" />
+                        {prod.barCode}
+                      </span>
+                    )}
+                  </div>
+
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                       {prod.category}
                     </span>
                     <h4 className="font-extrabold text-white text-xs leading-tight mt-0.5">{prod.name}</h4>
+                    {prod.description && (
+                      <p className="text-[10px] text-slate-500 truncate mt-0.5">{prod.description}</p>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
@@ -490,15 +557,13 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
               <p className="text-xs text-slate-400 mt-0.5">Control de existencias, precios y reabastecimiento de productos.</p>
             </div>
 
-            {currentUser.role === 'ADMIN' && (
-              <button
-                onClick={handleOpenNewProduct}
-                className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5 shrink-0"
-              >
-                <Plus className="w-4 h-4" />
-                + Nuevo Producto
-              </button>
-            )}
+            <button
+              onClick={handleOpenNewProduct}
+              className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black px-4 py-2.5 rounded-xl text-xs transition shadow flex items-center justify-center gap-1.5 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              + Agregar Producto
+            </button>
           </div>
 
           {/* Table / Cards List */}
@@ -510,7 +575,22 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                   key={prod.id}
                   className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-3 shadow flex flex-col justify-between"
                 >
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
+                    {/* Image Thumbnail */}
+                    <div className="w-full h-28 bg-slate-900 rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 relative">
+                      {prod.imageUrl ? (
+                        <img src={prod.imageUrl} alt={prod.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <ImageIcon className="w-10 h-10 text-slate-700" />
+                      )}
+                      {prod.barCode && (
+                        <span className="absolute bottom-1 right-1 bg-slate-950/90 text-slate-300 text-[10px] font-mono font-bold px-2 py-0.5 rounded border border-slate-800 flex items-center gap-1">
+                          <Barcode className="w-3 h-3 text-emerald-400" />
+                          {prod.barCode}
+                        </span>
+                      )}
+                    </div>
+
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         {prod.category}
@@ -530,24 +610,31 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                       )}
                     </div>
 
-                    <h4 className="font-extrabold text-white text-sm">{prod.name}</h4>
+                    <h4 className="font-extrabold text-white text-sm leading-tight">{prod.name}</h4>
+                    {prod.description && (
+                      <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{prod.description}</p>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900 p-2.5 rounded-xl border border-slate-800 font-mono">
                       <div>
                         <span className="text-slate-500 text-[10px] block">Precio Venta</span>
                         <span className="text-emerald-400 font-bold">${prod.price.toLocaleString('es-AR')}</span>
                       </div>
-                      {currentUser.role === 'ADMIN' && (
+                      {currentUser.role === 'ADMIN' ? (
                         <div>
                           <span className="text-slate-500 text-[10px] block">Ganancia Neta</span>
                           <span className="text-amber-400 font-bold">+${profit.toLocaleString('es-AR')}</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-slate-500 text-[10px] block">Stock Disponible</span>
+                          <span className="text-white font-bold">{prod.stock} u.</span>
                         </div>
                       )}
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2 pt-2 border-t border-slate-900">
-                    {/* Re-stock button allowed for both Staff and Admin */}
                     <button
                       onClick={() => setRestockProduct(prod)}
                       className="flex-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1"
@@ -556,21 +643,20 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                       + Reabastecer
                     </button>
 
+                    <button
+                      onClick={() => handleOpenEditProduct(prod)}
+                      className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2 rounded-lg text-xs transition"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                    </button>
+
                     {currentUser.role === 'ADMIN' && (
-                      <>
-                        <button
-                          onClick={() => handleOpenEditProduct(prod)}
-                          className="bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 p-2 rounded-lg text-xs transition"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => handleDeleteProduct(prod.id, prod.name)}
-                          className="bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 p-2 rounded-lg text-xs transition"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
+                      <button
+                        onClick={() => handleDeleteProduct(prod.id, prod.name)}
+                        className="bg-rose-950/40 hover:bg-rose-900/60 text-rose-400 border border-rose-800/50 p-2 rounded-lg text-xs transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     )}
                   </div>
                 </div>
@@ -580,13 +666,13 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
         </div>
       )}
 
-      {/* Modal: New / Edit Product */}
+      {/* Complete Modal: Add / Edit Product (Barcode, Description, Cost, Price, Photo) */}
       {isProductModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg my-auto overflow-hidden shadow-2xl">
             <div className="px-5 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="font-extrabold text-sm text-white">
-                {editingProduct ? 'Editar Producto' : 'Crear Producto'}
+              <h3 className="font-extrabold text-sm sm:text-base text-white">
+                {editingProduct ? 'Editar Producto de Cantina' : 'Agregar Nuevo Producto a Cantina'}
               </h3>
               <button
                 onClick={() => setIsProductModalOpen(false)}
@@ -596,20 +682,44 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
               </button>
             </div>
 
-            <form onSubmit={handleSaveProduct} className="p-5 space-y-3.5">
+            <form onSubmit={handleSaveProduct} className="p-5 space-y-3.5 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Nombre del Producto*</label>
+                  <input
+                    type="text"
+                    required
+                    value={productForm.name}
+                    onChange={e => setProductForm({ ...productForm, name: e.target.value })}
+                    placeholder="Ej: Agua Mineral 500ml"
+                    className="w-full bg-slate-950 border border-slate-800 text-white text-xs px-3 py-2.5 rounded-xl outline-none focus:border-emerald-400"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Código de Barras</label>
+                  <input
+                    type="text"
+                    value={productForm.barCode}
+                    onChange={e => setProductForm({ ...productForm, barCode: e.target.value })}
+                    placeholder="Ej: 7790001112223"
+                    className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-mono text-xs px-3 py-2.5 rounded-xl outline-none focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">Nombre del Producto*</label>
-                <input
-                  type="text"
-                  required
-                  value={productForm.name}
-                  onChange={e => setProductForm({ ...productForm, name: e.target.value })}
-                  placeholder="Ej: Agua Mineral 500ml"
-                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs px-3.5 py-2.5 rounded-xl outline-none focus:border-emerald-400"
+                <label className="block text-xs font-semibold text-slate-400 mb-1">Descripción</label>
+                <textarea
+                  rows={2}
+                  value={productForm.description}
+                  onChange={e => setProductForm({ ...productForm, description: e.target.value })}
+                  placeholder="Detalles del producto (ej: Sabor Vainilla, Talle L, etc.)..."
+                  className="w-full bg-slate-950 border border-slate-800 text-white text-xs p-3 rounded-xl outline-none focus:border-emerald-400"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Categoría</label>
                   <select
@@ -626,29 +736,32 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Precio Venta ($)*</label>
-                  <input
-                    type="number"
-                    required
-                    value={productForm.price}
-                    onChange={e => setProductForm({ ...productForm, price: Number(e.target.value) })}
-                    className="w-full bg-slate-950 border border-slate-800 text-emerald-400 font-mono font-bold text-xs px-3.5 py-2.5 rounded-xl outline-none focus:border-emerald-400"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div>
                   <label className="block text-xs font-semibold text-slate-400 mb-1">Precio Costo ($)</label>
                   <input
                     type="number"
                     value={productForm.costPrice}
                     onChange={e => setProductForm({ ...productForm, costPrice: Number(e.target.value) })}
-                    className="w-full bg-slate-950 border border-slate-800 text-slate-300 font-mono text-xs px-3 py-2 rounded-xl outline-none focus:border-emerald-400"
+                    placeholder="700"
+                    className="w-full bg-slate-950 border border-slate-800 text-slate-300 font-mono text-xs px-3 py-2.5 rounded-xl outline-none focus:border-emerald-400"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Stock Inicial</label>
+                  <label className="block text-xs font-semibold text-emerald-400 mb-1 font-bold">Precio Venta ($)*</label>
+                  <input
+                    type="number"
+                    required
+                    value={productForm.price}
+                    onChange={e => setProductForm({ ...productForm, price: Number(e.target.value) })}
+                    placeholder="1500"
+                    className="w-full bg-slate-950 border-2 border-emerald-500/50 text-emerald-400 font-mono font-bold text-xs px-3 py-2 rounded-xl outline-none focus:border-emerald-400"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Stock Inicial*</label>
                   <input
                     type="number"
                     required
@@ -657,8 +770,9 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                     className="w-full bg-slate-950 border border-slate-800 text-white font-mono text-xs px-3 py-2 rounded-xl outline-none focus:border-emerald-400"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 mb-1">Stock Mínimo</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1">Stock Mínimo (Alerta)</label>
                   <input
                     type="number"
                     required
@@ -667,6 +781,40 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                     className="w-full bg-slate-950 border border-slate-800 text-amber-400 font-mono text-xs px-3 py-2 rounded-xl outline-none focus:border-emerald-400"
                   />
                 </div>
+              </div>
+
+              {/* Foto / Imagen de Producto */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <label className="block text-xs font-semibold text-slate-400">Imagen / Foto del Producto</label>
+
+                {productForm.imageUrl ? (
+                  <div className="relative w-full h-32 bg-slate-950 rounded-xl overflow-hidden border border-slate-800 flex items-center justify-center">
+                    <img src={productForm.imageUrl} alt="Preview" className="w-full h-full object-contain" />
+                    <button
+                      type="button"
+                      onClick={() => setProductForm({ ...productForm, imageUrl: '' })}
+                      className="absolute top-2 right-2 bg-rose-600 text-white p-1 rounded-lg text-xs"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <label className="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs p-3 rounded-xl flex items-center justify-center gap-2 cursor-pointer transition">
+                      <Upload className="w-4 h-4 text-emerald-400" />
+                      <span>Subir Imagen</span>
+                      <input type="file" accept="image/*" onChange={handleImageFileUpload} className="hidden" />
+                    </label>
+
+                    <input
+                      type="text"
+                      value={productForm.imageUrl}
+                      onChange={e => setProductForm({ ...productForm, imageUrl: e.target.value })}
+                      placeholder="O pegar URL de imagen..."
+                      className="bg-slate-950 border border-slate-800 text-white text-xs px-3 py-2.5 rounded-xl outline-none focus:border-emerald-400"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-800">
@@ -679,9 +827,9 @@ export const PosView: React.FC<PosViewProps> = ({ currentUser }) => {
                 </button>
                 <button
                   type="submit"
-                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold px-5 py-2 rounded-xl text-xs transition shadow-md"
+                  className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-extrabold px-5 py-2.5 rounded-xl text-xs transition shadow-md"
                 >
-                  {editingProduct ? 'Guardar' : 'Crear'}
+                  {editingProduct ? 'Guardar Cambios' : 'Agregar Producto'}
                 </button>
               </div>
             </form>

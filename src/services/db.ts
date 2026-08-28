@@ -35,12 +35,12 @@ const DEFAULT_PLANS: Plan[] = [
 ];
 
 const DEFAULT_PRODUCTS: Product[] = [
-  { id: 'p1', name: 'Agua Mineral 500ml', category: 'BEBIDAS', price: 1500, costPrice: 700, stock: 30, minStock: 5 },
-  { id: 'p2', name: 'Gatorade / Energizante 500ml', category: 'BEBIDAS', price: 2500, costPrice: 1200, stock: 20, minStock: 5 },
-  { id: 'p3', name: 'Barrita Proteica', category: 'SUPLEMENTOS', price: 2000, costPrice: 900, stock: 15, minStock: 4 },
-  { id: 'p4', name: 'Whey Protein 1kg', category: 'SUPLEMENTOS', price: 28000, costPrice: 16000, stock: 8, minStock: 2 },
-  { id: 'p5', name: 'Remera Oficial ControlGYM', category: 'INDUMENTARIA', price: 18000, costPrice: 9000, stock: 10, minStock: 3 },
-  { id: 'p6', name: 'Toalla Entrenamiento', category: 'ACCESORIOS', price: 8000, costPrice: 4000, stock: 12, minStock: 3 },
+  { id: 'p1', name: 'Agua Mineral 500ml', barCode: '7790001112223', description: 'Agua mineral sin gas 500ml', category: 'BEBIDAS', price: 1500, costPrice: 700, stock: 30, minStock: 5 },
+  { id: 'p2', name: 'Gatorade 500ml', barCode: '7790003334445', description: 'Bebida isotónica sabor Frutas Tropicales', category: 'BEBIDAS', price: 2500, costPrice: 1200, stock: 20, minStock: 5 },
+  { id: 'p3', name: 'Barrita Proteica', barCode: '7790005556667', description: 'Barrita de cereal con 20g de proteína', category: 'SUPLEMENTOS', price: 2000, costPrice: 900, stock: 15, minStock: 4 },
+  { id: 'p4', name: 'Whey Protein 1kg', barCode: '7790007778889', description: 'Proteína aislada sabor Vainilla', category: 'SUPLEMENTOS', price: 28000, costPrice: 16000, stock: 8, minStock: 2 },
+  { id: 'p5', name: 'Remera Oficial ControlGYM', barCode: '7790009990001', description: 'Remera deportiva dry-fit talle M/L', category: 'INDUMENTARIA', price: 18000, costPrice: 9000, stock: 10, minStock: 3 },
+  { id: 'p6', name: 'Toalla Entrenamiento', barCode: '7790001231234', description: 'Toalla microfibra secado rápido', category: 'ACCESORIOS', price: 8000, costPrice: 4000, stock: 12, minStock: 3 },
 ];
 
 const DEFAULT_SETTINGS: GymSettings = {
@@ -93,7 +93,7 @@ const DEFAULT_MEMBERS: Member[] = [
     planName: 'Musculación Mensual',
     expirationDate: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
     registrationDate: '2024-11-01',
-    accountBalance: 1500, // Deuda de 1 agua mineral
+    accountBalance: 1500,
   },
 ];
 
@@ -350,11 +350,14 @@ class DatabaseService {
     const newProduct: Product = {
       id: Date.now().toString(),
       name: product.name,
+      barCode: product.barCode || '',
+      description: product.description || '',
       category: product.category || 'BEBIDAS',
       price: product.price,
       costPrice: product.costPrice || 0,
       stock: product.stock,
       minStock: product.minStock || 3,
+      imageUrl: product.imageUrl || '',
     };
     products.push(newProduct);
     this.set(STORAGE_KEYS.PRODUCTS, products);

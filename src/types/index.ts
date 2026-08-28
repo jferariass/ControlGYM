@@ -78,11 +78,14 @@ export type ProductCategory = 'BEBIDAS' | 'SUPLEMENTOS' | 'INDUMENTARIA' | 'ACCE
 export interface Product {
   id: string;
   name: string;
+  barCode?: string;
+  description?: string;
   category: ProductCategory;
   price: number;
   costPrice: number;
   stock: number;
   minStock: number;
+  imageUrl?: string;
 }
 
 export interface ProductSaleItem {
